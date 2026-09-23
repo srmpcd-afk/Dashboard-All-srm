@@ -80,17 +80,85 @@
     background:var(--teal-100);
     color:var(--teal-dark);
   }
+  .split-tools{
+    display:none;
+    align-items:center;
+    gap:4px;
+    margin-left:4px;
+    padding-left:10px;
+    border-left:1px solid var(--line);
+  }
+  .split-tools.visible{ display:flex; }
+  .icon-btn{
+    border:1px solid var(--line);
+    background:var(--surface);
+    color:var(--text-600);
+    width:32px;
+    height:32px;
+    border-radius:8px;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    transition:background .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .icon-btn svg{ width:16px; height:16px; }
+  .icon-btn:hover{
+    border-color:var(--teal);
+    color:var(--teal-dark);
+    background:var(--teal-100);
+  }
+  .icon-btn.active{
+    background:var(--teal);
+    border-color:var(--teal);
+    color:#fff;
+  }
   main{
     flex:1;
-    position:relative;
+    display:flex;
     min-height:0;
   }
+  main.split{
+    flex-direction:row;
+  }
+  main.split.dir-col{
+    flex-direction:column;
+  }
   .pane{
-    position:absolute;
-    inset:0;
+    position:relative;
+    flex:1 1 0;
+    min-width:0;
+    min-height:0;
     display:none;
+    overflow:hidden;
   }
   .pane.active{ display:block; }
+  main.split .pane{ display:block; flex-grow:0; flex-shrink:0; }
+  .split-divider{
+    display:none;
+    flex:0 0 auto;
+    background:var(--line);
+    position:relative;
+    z-index:5;
+  }
+  main.split .split-divider{
+    display:block;
+  }
+  main.split:not(.dir-col) .split-divider{
+    width:6px;
+    cursor:col-resize;
+  }
+  main.split.dir-col .split-divider{
+    height:6px;
+    cursor:row-resize;
+  }
+  .split-divider:hover, .split-divider.dragging{
+    background:var(--teal);
+  }
+  body.dragging{ cursor:inherit; }
+  body.dragging main.split:not(.dir-col){ cursor:col-resize; }
+  body.dragging main.split.dir-col{ cursor:row-resize; }
+  body.dragging iframe{ pointer-events:none; }
   .pane iframe{
     width:100%;
     height:100%;
@@ -106,6 +174,7 @@
     color:var(--text-600);
     font-size:14px;
     gap:8px;
+    background:var(--surface);
   }
 </style>
 </head>
@@ -115,13 +184,23 @@
   <div class="tabs" role="tablist">
     <button class="tab-btn active" data-target="pane-personal" id="btn-personal" role="tab" aria-selected="true">ส่วนบุคคล</button>
     <button class="tab-btn" data-target="pane-team" id="btn-team" role="tab" aria-selected="false">ส่วนงาน</button>
+    <button class="tab-btn" data-mode="split" id="btn-split" role="tab" aria-selected="false">ดูพร้อมกัน</button>
+  </div>
+  <div class="split-tools" id="split-tools">
+    <button class="icon-btn active" id="btn-dir-row" title="แบ่งซ้าย-ขวา" aria-label="แบ่งซ้าย-ขวา">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="8" height="16" rx="1.5"/><rect x="13" y="4" width="8" height="16" rx="1.5"/></svg>
+    </button>
+    <button class="icon-btn" id="btn-dir-col" title="แบ่งบน-ล่าง" aria-label="แบ่งบน-ล่าง">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="8" rx="1.5"/><rect x="4" y="13" width="16" height="8" rx="1.5"/></svg>
+    </button>
   </div>
 </header>
 
-<main>
+<main id="main-area">
   <div class="pane active" id="pane-personal">
     <iframe id="iframe-personal" title="แดชบอร์ดส่วนบุคคล"></iframe>
   </div>
+  <div class="split-divider" id="split-divider"></div>
   <div class="pane" id="pane-team">
     <div class="loading" id="loading-team">กำลังโหลด...</div>
     <iframe id="iframe-team" title="แดชบอร์ดส่วนงาน" style="display:none;"></iframe>
@@ -152,15 +231,49 @@
   }
 
   var buttons = document.querySelectorAll('.tab-btn');
+  var mainArea = document.getElementById('main-area');
+  var splitTools = document.getElementById('split-tools');
+  var paneA = document.getElementById('pane-personal');
+  var paneB = document.getElementById('pane-team');
+  var divider = document.getElementById('split-divider');
+  var btnDirRow = document.getElementById('btn-dir-row');
+  var btnDirCol = document.getElementById('btn-dir-col');
+
+  var splitRatio = 50; // % given to paneA
+
+  function applySplitSizes(){
+    var isCol = mainArea.classList.contains('dir-col');
+    var dividerSize = 6; // px, matches CSS
+    paneA.style.flexBasis = 'calc(' + splitRatio + '% - ' + (dividerSize/2) + 'px)';
+    paneB.style.flexBasis = 'calc(' + (100 - splitRatio) + '% - ' + (dividerSize/2) + 'px)';
+  }
+
+  function setActiveButton(activeBtn){
+    buttons.forEach(function(b){
+      var isActive = (b === activeBtn);
+      b.classList.toggle('active', isActive);
+      b.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+  }
+
   buttons.forEach(function(btn){
     btn.addEventListener('click', function(){
-      buttons.forEach(function(b){
-        b.classList.remove('active');
-        b.setAttribute('aria-selected','false');
-      });
-      btn.classList.add('active');
-      btn.setAttribute('aria-selected','true');
+      setActiveButton(btn);
 
+      if(btn.dataset.mode === 'split'){
+        mainArea.classList.add('split');
+        splitTools.classList.add('visible');
+        paneA.classList.add('active');
+        paneB.classList.add('active');
+        applySplitSizes();
+        loadTeamIfNeeded();
+        return;
+      }
+
+      mainArea.classList.remove('split');
+      splitTools.classList.remove('visible');
+      paneA.style.flexBasis = '';
+      paneB.style.flexBasis = '';
       document.querySelectorAll('.pane').forEach(function(p){ p.classList.remove('active'); });
       var target = document.getElementById(btn.dataset.target);
       target.classList.add('active');
@@ -170,6 +283,68 @@
       }
     });
   });
+
+  btnDirRow.addEventListener('click', function(){
+    mainArea.classList.remove('dir-col');
+    btnDirRow.classList.add('active');
+    btnDirCol.classList.remove('active');
+    applySplitSizes();
+  });
+  btnDirCol.addEventListener('click', function(){
+    mainArea.classList.add('dir-col');
+    btnDirCol.classList.add('active');
+    btnDirRow.classList.remove('active');
+    applySplitSizes();
+  });
+
+  // Drag to resize
+  var dragging = false;
+
+  function startDrag(e){
+    dragging = true;
+    divider.classList.add('dragging');
+    document.body.classList.add('dragging');
+    e.preventDefault();
+  }
+
+  function moveDrag(clientX, clientY){
+    var rect = mainArea.getBoundingClientRect();
+    var isCol = mainArea.classList.contains('dir-col');
+    var ratio;
+    if(isCol){
+      ratio = ((clientY - rect.top) / rect.height) * 100;
+    } else {
+      ratio = ((clientX - rect.left) / rect.width) * 100;
+    }
+    ratio = Math.max(15, Math.min(85, ratio));
+    splitRatio = ratio;
+    applySplitSizes();
+  }
+
+  function endDrag(){
+    if(!dragging) return;
+    dragging = false;
+    divider.classList.remove('dragging');
+    document.body.classList.remove('dragging');
+  }
+
+  divider.addEventListener('mousedown', startDrag);
+  window.addEventListener('mousemove', function(e){
+    if(!dragging) return;
+    moveDrag(e.clientX, e.clientY);
+  });
+  window.addEventListener('mouseup', endDrag);
+
+  divider.addEventListener('touchstart', function(e){
+    startDrag(e);
+  }, {passive:false});
+  window.addEventListener('touchmove', function(e){
+    if(!dragging) return;
+    var t = e.touches[0];
+    moveDrag(t.clientX, t.clientY);
+    e.preventDefault();
+  }, {passive:false});
+  window.addEventListener('touchend', endDrag);
 </script>
 
 </body>
